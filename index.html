@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Space Chicken Invaders</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas" width="800" height="600"></canvas>
+
+    <div id="hud">
+      <div class="hud-left">
+        <div>Level: <span id="hud-level">1</span></div>
+        <div>Round: <span id="hud-round">1</span> / <span id="hud-rounds">3</span></div>
+        <div>Score: <span id="hud-score">0</span></div>
+      </div>
+      <div class="hud-right">
+        <div>Lives: <span id="hud-lives">3</span></div>
+        <div>Weapon: <span id="hud-weapon">Lv 1</span></div>
+        <div>Missiles: <span id="hud-missiles">0</span></div>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay">
+      <div class="panel">
+        <h1>SPACE CHICKEN INVADERS</h1>
+        <p class="tagline">Defend the galaxy from the chicken menace!</p>
+        <div class="instructions">
+          <h3>Controls</h3>
+          <ul>
+            <li><b>Arrow Keys / WASD</b> - Move ship</li>
+            <li><b>Space</b> - Fire laser</li>
+            <li><b>X</b> - Launch missile</li>
+            <li><b>P</b> - Pause</li>
+          </ul>
+          <h3>Power-ups</h3>
+          <ul>
+            <li><span class="pu pu-leg"></span> <b>Chicken Leg</b> - Adds missile</li>
+            <li><span class="pu pu-laser"></span> <b>Laser Crystal</b> - Upgrades laser</li>
+            <li><span class="pu pu-heart"></span> <b>Heart</b> - Extra life</li>
+          </ul>
+        </div>
+        <button id="start-btn" class="btn">START GAME</button>
+      </div>
+    </div>
+
+    <div id="message" class="message hidden"></div>
+  </div>
+
+  <script src="js/utils.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>
