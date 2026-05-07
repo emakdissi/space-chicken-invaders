@@ -95,7 +95,11 @@
     hudRounds.textContent = state.rounds;
     hudScore.textContent = state.score;
     hudLives.textContent = state.lives;
-    hudWeapon.textContent = 'Lv ' + (state.player ? state.player.weaponLevel : 1);
+    if (state.player) {
+      hudWeapon.textContent = `${state.player.weaponName()} (Lv${state.player.weaponLevel})`;
+    } else {
+      hudWeapon.textContent = 'Ion Pulse (Lv1)';
+    }
     hudMissiles.textContent = state.player ? state.player.missiles : 0;
   }
 
@@ -125,6 +129,13 @@
     showMessage(`LEVEL ${state.level}`, `${state.rounds} rounds — get ready!`, 2.0);
   }
 
+  // Difficulty scales with both level/round AND the player's weapon power so
+  // a fully-upgraded laser doesn't trivialize late levels.
+  function chickenHp(baseTypeHp, lvl, rnd) {
+    const weaponBoost = Math.max(0, (state.player ? state.player.weaponLevel : 1) - 2);
+    return Math.max(1, Math.floor(baseTypeHp + lvl * 0.4 + rnd * 0.15 + weaponBoost));
+  }
+
   function startRound() {
     state.phase = 'play';
     state.chickens.length = 0;
@@ -136,51 +147,88 @@
 
     const lvl = state.level;
     const rnd = state.round;
+    const wlvl = state.player.weaponLevel;
 
-    state.eggRate = 0.7 + lvl * 0.12 + rnd * 0.06;
+    // Egg + sweep speed both creep up with level/round/weapon power.
+    state.eggRate = 0.7 + lvl * 0.12 + rnd * 0.06 + Math.max(0, wlvl - 2) * 0.08;
     state.formation = {
       x: 0,
       y: 70,
-      vx: 50 + lvl * 8 + rnd * 4,
+      vx: 50 + lvl * 9 + rnd * 4 + Math.max(0, wlvl - 2) * 8,
       dir: 1,
       ampX: 60,
       bobT: 0,
     };
 
-    const totalDifficulty = lvl * 1.2 + rnd * 0.8;
-
-    let cols, rows, type;
-    const r = Utils.rand(0, 1);
-
     if (rnd === state.rounds) {
-      // boss round
       buildBossWave(lvl);
-    } else if (lvl >= 3 && r < 0.25) {
-      cols = 5;
-      rows = 2;
-      type = 'big';
-      buildGrid(cols, rows, type, Math.max(2, Math.floor(2 + lvl * 0.6)));
-    } else {
-      cols = Utils.clamp(5 + Math.floor(totalDifficulty / 3), 5, 9);
-      rows = Utils.clamp(2 + Math.floor(totalDifficulty / 4), 2, 5);
-      type = 'normal';
-      const hp = Math.max(1, Math.floor(1 + lvl * 0.3));
-      buildGrid(cols, rows, type, hp);
-      // chance for big chickens mixed in
-      if (lvl >= 2 && Math.random() < 0.4) addBigChickens(1 + Math.floor(lvl / 2));
+      showMessage(`BOSS — LEVEL ${state.level}`, `Defeat the Chicken Overlord!`, 1.6);
+      return;
     }
 
-    showMessage(`ROUND ${state.round}`, `Level ${state.level}`, 1.2);
+    const totalDifficulty = lvl * 1.2 + rnd * 0.8;
+    const cols = Utils.clamp(5 + Math.floor(totalDifficulty / 3), 5, 9);
+    const rows = Utils.clamp(2 + Math.floor(totalDifficulty / 4), 2, 5);
+
+    // Pick a wave theme so each round feels different.
+    const themes = ['mixed'];
+    if (lvl >= 2) themes.push('fast');
+    if (lvl >= 3) themes.push('armored');
+    if (lvl >= 4) themes.push('mixed');
+    if (lvl >= 5) themes.push('kamikaze');
+    const theme = Utils.pick(themes);
+
+    buildGrid(cols, rows, lvl, rnd, theme);
+
+    // Sprinkles: bigs / kamikazes
+    if (lvl >= 2 && Math.random() < 0.35) addBigChickens(1 + Math.floor(lvl / 2), lvl, rnd);
+    if (lvl >= 5 && Math.random() < 0.4) addKamikazes(1 + Math.floor(lvl / 3), lvl);
+
+    showMessage(`ROUND ${state.round}`, `Level ${state.level} — ${theme}`, 1.2);
   }
 
-  function buildGrid(cols, rows, type, hp) {
+  function pickGridType(theme, lvl, c, r, cols) {
+    // Rules per theme; falls back to normal.
+    if (theme === 'fast') {
+      // alternating fast / normal stripes
+      return r % 2 === 0 ? 'fast' : 'normal';
+    }
+    if (theme === 'armored') {
+      // armored core with normals on the edges
+      if (c >= 1 && c <= cols - 2 && r === 0) return 'armored';
+      return 'normal';
+    }
+    if (theme === 'kamikaze') {
+      // a couple of kamikazes scattered in the back row
+      if (r === 0 && (c === 1 || c === cols - 2)) return 'kamikaze';
+      return 'normal';
+    }
+    if (theme === 'mixed') {
+      const roll = Math.random();
+      if (lvl >= 4 && roll < 0.1) return 'armored';
+      if (lvl >= 3 && roll < 0.25) return 'fast';
+      if (lvl >= 5 && roll < 0.32) return 'kamikaze';
+      return 'normal';
+    }
+    return 'normal';
+  }
+
+  function hpForType(type, lvl, rnd) {
+    if (type === 'armored') return chickenHp(4, lvl, rnd);
+    if (type === 'fast') return chickenHp(1, lvl, rnd);
+    if (type === 'kamikaze') return chickenHp(2, lvl, rnd);
+    if (type === 'big') return chickenHp(5, lvl, rnd);
+    return chickenHp(1, lvl, rnd);
+  }
+
+  function buildGrid(cols, rows, lvl, rnd, theme) {
     const spacingX = 60;
     const spacingY = 50;
-    const startX = (W - (cols - 1) * spacingX) / 2;
     const startY = 80;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        const ch = new Chicken(startX + c * spacingX, startY + r * spacingY, hp, type);
+        const type = pickGridType(theme, lvl, c, r, cols);
+        const ch = new Chicken(0, 0, hpForType(type, lvl, rnd), type);
         ch.fx = c * spacingX - ((cols - 1) * spacingX) / 2;
         ch.fy = r * spacingY;
         state.chickens.push(ch);
@@ -190,40 +238,46 @@
     state.formation.y = startY;
   }
 
-  function addBigChickens(n) {
+  function addBigChickens(n, lvl, rnd) {
     const spacingX = 90;
-    const startX = (W - (n - 1) * spacingX) / 2;
     for (let i = 0; i < n; i++) {
-      const ch = new Chicken(startX + i * spacingX, 50, 5 + state.level, 'big');
-      ch.fx = (startX + i * spacingX) - W / 2;
+      const ch = new Chicken(0, 0, hpForType('big', lvl, rnd), 'big');
+      ch.fx = (i - (n - 1) / 2) * spacingX;
       ch.fy = -30;
       state.chickens.push(ch);
     }
   }
 
-  function buildBossWave(lvl) {
-    const bossHp = 30 + lvl * 18;
-    const ch = new Chicken(W / 2, 100, bossHp, 'boss');
-    ch.w = 70;
-    ch.h = 60;
-    ch.fx = 0;
-    ch.fy = 30;
-    ch.swayAmp = 80;
-    ch.bobAmp = 18;
-    state.chickens.push(ch);
+  function addKamikazes(n, lvl) {
+    for (let i = 0; i < n; i++) {
+      const ch = new Chicken(0, 0, chickenHp(2, lvl, 1), 'kamikaze');
+      ch.fx = Utils.rand(-180, 180);
+      ch.fy = -50 + Utils.rand(-20, 20);
+      state.chickens.push(ch);
+    }
+  }
 
-    // a few minions
+  function buildBossWave(lvl) {
+    const wlvl = state.player.weaponLevel;
+    // Boss HP scales hard with level + weapon level so a maxed laser still has work to do.
+    const bossHp = 60 + lvl * 30 + Math.max(0, wlvl - 2) * 25;
+    const boss = new Chicken(0, 0, bossHp, 'boss');
+    boss.fx = 0;
+    boss.fy = 30;
+    state.chickens.push(boss);
+
+    // Minion escort — count and toughness scale with level.
     const minionCols = 4 + Math.floor(lvl / 2);
     const spacingX = 60;
-    const startX = (W - (minionCols - 1) * spacingX) / 2;
     for (let c = 0; c < minionCols; c++) {
-      const m = new Chicken(startX + c * spacingX, 180, 1 + Math.floor(lvl / 2), 'normal');
-      m.fx = c * spacingX - ((minionCols - 1) * spacingX) / 2;
-      m.fy = 100;
+      const minionType = lvl >= 4 && c % 3 === 1 ? 'armored' : lvl >= 2 && c % 2 === 0 ? 'fast' : 'normal';
+      const m = new Chicken(0, 0, hpForType(minionType, lvl, 1), minionType);
+      m.fx = (c - (minionCols - 1) / 2) * spacingX;
+      m.fy = 130;
       state.chickens.push(m);
     }
     state.formation.x = W / 2;
-    state.formation.y = 70;
+    state.formation.y = 90;
   }
 
   function maybeSpawnPowerup(dt) {
@@ -298,23 +352,31 @@
     }
     if (f.y > H - 240) f.y = H - 240;
 
-    for (const ch of state.chickens) ch.update(dt, f, state.eggs, state.eggRate);
+    const playerPos = { x: p.x, y: p.y };
+    for (const ch of state.chickens) ch.update(dt, f, state.eggs, state.eggRate, playerPos);
     for (const e of state.eggs) e.update(dt, bounds);
     for (const pu of state.powerups) pu.update(dt, bounds);
     for (const l of state.lasers) l.update(dt, bounds);
     for (const m of state.missiles) m.update(dt, bounds, state.particles);
     for (const pa of state.particles) pa.update(dt);
 
-    // collisions: lasers vs chickens
+    // collisions: projectiles vs chickens (with piercing support)
     for (const l of state.lasers) {
       if (l.dead) continue;
       for (const ch of state.chickens) {
         if (ch.dead) continue;
-        if (Utils.rectsOverlap(l.rect, ch.rect)) {
-          ch.hit(l.dmg);
+        if (l.hits && l.hits.has(ch)) continue;
+        if (!Utils.rectsOverlap(l.rect, ch.rect)) continue;
+
+        ch.hit(l.dmg);
+        spawnExplosion(state.particles, l.x, l.y, '#ffaa66', 4, 100);
+        if (ch.dead) onChickenKilled(ch);
+
+        if (l.hits) l.hits.add(ch);
+        if (l.pierce > 0) {
+          l.pierce -= 1;
+        } else {
           l.dead = true;
-          spawnExplosion(state.particles, l.x, l.y, '#ffaa66', 4, 100);
-          if (ch.dead) onChickenKilled(ch);
           break;
         }
       }
@@ -517,6 +579,34 @@
     if (state.player && state.phase !== 'menu') state.player.draw(ctx);
 
     for (const p of state.particles) p.draw(ctx);
+
+    // Boss HP bar — only while a boss is alive on screen
+    if (state.phase === 'play') {
+      const boss = state.chickens.find((c) => c.type === 'boss' && !c.dead);
+      if (boss) {
+        const bw = 540;
+        const bh = 14;
+        const bx = (W - bw) / 2;
+        const by = 70;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        ctx.fillRect(bx - 4, by - 18, bw + 8, bh + 24);
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(
+          boss.phase === 2 ? 'CHICKEN OVERLORD — ENRAGED' : 'CHICKEN OVERLORD',
+          W / 2,
+          by - 4,
+        );
+        ctx.fillStyle = '#400';
+        ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = boss.phase === 2 ? '#ff4444' : '#ff8844';
+        ctx.fillRect(bx, by, bw * Utils.clamp(boss.hp / boss.maxHp, 0, 1), bh);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, bw, bh);
+      }
+    }
 
     if (state.paused && state.phase === 'play') {
       ctx.fillStyle = 'rgba(0,0,0,0.5)';

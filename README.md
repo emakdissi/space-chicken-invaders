@@ -57,9 +57,40 @@ The campaign is divided into **10 levels**. Each level contains a number of roun
 | 9 | 7 |
 | 10 | 8 |
 
-Difficulty scales with both level and round: the chicken formation moves faster, drops eggs more often, includes more rows/columns, and chickens have more health. The **final round of every level is a boss round** — a giant mutant chicken backed by a wave of minions.
+Difficulty scales with **level**, **round**, *and your weapon power* — chickens get more HP and the formation sweeps faster as your weapon upgrades, so power-ups never trivialize the game. The **final round of every level is a boss fight** against the Chicken Overlord, with multi-pattern egg attacks and a phase change at 50% HP.
 
-Clearing a round awards a level-scaled bonus. Clearing a final round awards a much larger level-clear bonus.
+Each round picks a *theme* that decides the chicken composition (mixed / fast / armored / kamikaze), so consecutive rounds in the same level still feel different.
+
+Clearing a round awards a level-scaled bonus. Clearing the boss round awards a much larger level-clear bonus.
+
+---
+
+## Weapons
+
+Catching **Laser Crystal** power-ups doesn't just stack damage — it **changes your weapon entirely**, with new shapes, sounds, and behaviors:
+
+| Tier | Name | Behavior |
+|------|------|----------|
+| 1 | **Ion Pulse** | Single yellow pellet — your starting cannon |
+| 2 | **Twin Laser** | Twin crimson beams, double fire rate |
+| 3 | **Plasma Cannon** | 3 pulsing purple plasma orbs in a fan |
+| 4 | **Lightning Stream** | 2 zigzag lightning bolts that **pierce 2 chickens each** |
+| 5 | **Photon Storm** | Wide blue beam that pierces *everything* + escort spread shots |
+
+Missiles (`X` key) are independent: they're area-of-effect explosives that wipe out clusters and even shoot down nearby eggs.
+
+---
+
+## Chicken Bestiary
+
+| Type | Look | Notes |
+|------|------|-------|
+| **Normal** | White, classic chicken | Standard fodder |
+| **Fast** | Light blue, smaller | Sways more wildly, lays eggs more often |
+| **Armored** | Grey with metallic plating + helmet | Tough; lays few eggs but soaks damage |
+| **Big** | Cream-coloured, large | Multi-HP, 50% chance to drop a power-up |
+| **Kamikaze** | Reddish, angry eyes | Periodically dives at your ship — single-use suicide attacker |
+| **Chicken Overlord** | Huge, purple/red, crowned | Boss of every level, fights in 2 phases (red = enraged) with spread / ring / aimed egg attacks |
 
 ---
 
@@ -70,7 +101,7 @@ Power-ups occasionally drop from the sky and can also fall from defeated chicken
 | Power-up | Effect |
 |----------|--------|
 | 🍗 **Chicken Leg** | Adds 2 missiles to your stock |
-| 🟢 **Laser Crystal** | Upgrades your laser (up to 5 levels — more bullets, more damage, faster fire rate) |
+| 🟢 **Laser Crystal** | Promotes your weapon to the next tier (Ion → Twin → Plasma → Lightning → Photon) |
 | ❤️ **Heart** | Restores 1 life (up to a max of 5) |
 
 Bosses are guaranteed to drop a power-up. Big chickens have a 50% drop chance.
@@ -94,8 +125,9 @@ Bosses are guaranteed to drop a power-up. Big chickens have a 50% drop chance.
 ├── css/style.css     # styling for HUD, menu, and overlays
 ├── js/
 │   ├── utils.js      # helpers, starfield background, particles
-│   ├── entities.js   # Player, Laser, Missile, Chicken, Egg, PowerUp
-│   └── game.js       # main loop, levels, rounds, collisions, state
+│   ├── entities.js   # Player, projectiles (Ion/Laser/Plasma/Lightning/Photon),
+│   │                 # Missile, Chicken (5 types + boss), Egg, PowerUp
+│   └── game.js       # main loop, levels, rounds, collisions, state, boss HP UI
 └── README.md
 ```
 
