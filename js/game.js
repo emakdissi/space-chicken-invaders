@@ -19,9 +19,6 @@
   const startBtn = document.getElementById('start-btn');
   const messageEl = document.getElementById('message');
 
-  const LEVEL_ROUNDS = [3, 4, 4, 5, 5, 6, 6, 7, 7, 8];
-  const TOTAL_LEVELS = LEVEL_ROUNDS.length;
-
   const input = { left: false, right: false, up: false, down: false, fire: false, missile: false };
 
   const keyMap = {
@@ -39,7 +36,7 @@
       e.preventDefault();
     }
     if (e.key === 'p' || e.key === 'P') {
-      if (state.phase === 'play') state.paused = !state.paused;
+      if (state.phase === PHASE.PLAY) state.paused = !state.paused;
     }
   });
 
@@ -51,34 +48,31 @@
   });
 
   const state = {
-    phase: 'menu', // menu | play | levelIntro | roundClear | levelClear | gameOver | victory
+    phase: PHASE.MENU,
     paused: false,
     level: 1,
     round: 1,
-    rounds: 3,
+    rounds: LEVEL_ROUNDS[0],
     score: 0,
-    lives: 3,
+    lives: GAME.STARTING_LIVES,
     player: null,
     chickens: [],
     eggs: [],
     powerups: [],
-    lasers: [],
+    projectiles: [],
     missiles: [],
     particles: [],
     formation: { x: 0, y: 80, vx: 60, dir: 1 },
     starfield: new Starfield(W, H, 100),
     msgTimer: 0,
-    msgMain: '',
-    msgSub: '',
-    spawnQueue: [],
-    spawnTimer: 0,
     eggRate: 1,
     powerupTimer: 0,
   };
 
+  // Keep the entity array names in one place so cleanup/rendering loops stay in sync.
+  const ENTITY_LISTS = ['projectiles', 'missiles', 'chickens', 'eggs', 'powerups', 'particles'];
+
   function showMessage(main, sub, time = 2.0) {
-    state.msgMain = main;
-    state.msgSub = sub;
     state.msgTimer = time;
     messageEl.innerHTML = main + (sub ? `<span class="sub">${sub}</span>` : '');
     messageEl.classList.remove('hidden');
@@ -110,22 +104,48 @@
     state.round = 1;
     state.rounds = LEVEL_ROUNDS[0];
     state.score = 0;
-    state.lives = 3;
+    state.lives = GAME.STARTING_LIVES;
     state.player = new Player(W / 2, H - 70);
-    state.player.missiles = 3;
+    state.player.missiles = GAME.STARTING_MISSILES;
     overlay.classList.add('hidden');
     enterLevelIntro();
   }
 
+  function clearAllEntities() {
+    for (const k of ENTITY_LISTS) state[k].length = 0;
+  }
+
+  // Drop everything in entity arrays whose .dead flag has been set this frame.
+  function cleanupDead() {
+    for (const k of ENTITY_LISTS) {
+      state[k] = state[k].filter((x) => !x.dead);
+    }
+  }
+
+  // Damage every chicken within `radius` of (x,y) and destroy nearby eggs.
+  // Used for missile explosions; safe to call once per missile detonation.
+  function applyAOE(x, y, radius, dmg) {
+    const r2 = radius * radius;
+    for (const ch of state.chickens) {
+      if (ch.dead) continue;
+      const dx = ch.x - x;
+      const dy = ch.y - y;
+      if (dx * dx + dy * dy < r2) {
+        ch.hit(dmg);
+        if (ch.dead) onChickenKilled(ch);
+      }
+    }
+    for (const eg of state.eggs) {
+      const dx = eg.x - x;
+      const dy = eg.y - y;
+      if (dx * dx + dy * dy < r2) eg.dead = true;
+    }
+  }
+
   function enterLevelIntro() {
-    state.phase = 'levelIntro';
+    state.phase = PHASE.LEVEL_INTRO;
     state.rounds = LEVEL_ROUNDS[state.level - 1] || 8;
-    state.chickens.length = 0;
-    state.eggs.length = 0;
-    state.powerups.length = 0;
-    state.lasers.length = 0;
-    state.missiles.length = 0;
-    state.particles.length = 0;
+    clearAllEntities();
     showMessage(`LEVEL ${state.level}`, `${state.rounds} rounds — get ready!`, 2.0);
   }
 
@@ -137,12 +157,8 @@
   }
 
   function startRound() {
-    state.phase = 'play';
-    state.chickens.length = 0;
-    state.eggs.length = 0;
-    state.powerups.length = 0;
-    state.spawnQueue.length = 0;
-    state.spawnTimer = 0;
+    state.phase = PHASE.PLAY;
+    clearAllEntities();
     state.powerupTimer = Utils.rand(4, 8);
 
     const lvl = state.level;
@@ -171,11 +187,11 @@
     const rows = Utils.clamp(2 + Math.floor(totalDifficulty / 4), 2, 5);
 
     // Pick a wave theme so each round feels different.
-    const themes = ['mixed'];
-    if (lvl >= 2) themes.push('fast');
-    if (lvl >= 3) themes.push('armored');
-    if (lvl >= 4) themes.push('mixed');
-    if (lvl >= 5) themes.push('kamikaze');
+    const themes = [THEME.MIXED];
+    if (lvl >= 2) themes.push(THEME.FAST);
+    if (lvl >= 3) themes.push(THEME.ARMORED);
+    if (lvl >= 4) themes.push(THEME.MIXED);
+    if (lvl >= 5) themes.push(THEME.KAMIKAZE);
     const theme = Utils.pick(themes);
 
     buildGrid(cols, rows, lvl, rnd, theme);
@@ -189,35 +205,35 @@
 
   function pickGridType(theme, lvl, c, r, cols) {
     // Rules per theme; falls back to normal.
-    if (theme === 'fast') {
+    if (theme === THEME.FAST) {
       // alternating fast / normal stripes
-      return r % 2 === 0 ? 'fast' : 'normal';
+      return r % 2 === 0 ? CHICKEN.FAST : CHICKEN.NORMAL;
     }
-    if (theme === 'armored') {
+    if (theme === THEME.ARMORED) {
       // armored core with normals on the edges
-      if (c >= 1 && c <= cols - 2 && r === 0) return 'armored';
-      return 'normal';
+      if (c >= 1 && c <= cols - 2 && r === 0) return CHICKEN.ARMORED;
+      return CHICKEN.NORMAL;
     }
-    if (theme === 'kamikaze') {
+    if (theme === THEME.KAMIKAZE) {
       // a couple of kamikazes scattered in the back row
-      if (r === 0 && (c === 1 || c === cols - 2)) return 'kamikaze';
-      return 'normal';
+      if (r === 0 && (c === 1 || c === cols - 2)) return CHICKEN.KAMIKAZE;
+      return CHICKEN.NORMAL;
     }
-    if (theme === 'mixed') {
+    if (theme === THEME.MIXED) {
       const roll = Math.random();
-      if (lvl >= 4 && roll < 0.1) return 'armored';
-      if (lvl >= 3 && roll < 0.25) return 'fast';
-      if (lvl >= 5 && roll < 0.32) return 'kamikaze';
-      return 'normal';
+      if (lvl >= 4 && roll < 0.1) return CHICKEN.ARMORED;
+      if (lvl >= 3 && roll < 0.25) return CHICKEN.FAST;
+      if (lvl >= 5 && roll < 0.32) return CHICKEN.KAMIKAZE;
+      return CHICKEN.NORMAL;
     }
-    return 'normal';
+    return CHICKEN.NORMAL;
   }
 
   function hpForType(type, lvl, rnd) {
-    if (type === 'armored') return chickenHp(4, lvl, rnd);
-    if (type === 'fast') return chickenHp(1, lvl, rnd);
-    if (type === 'kamikaze') return chickenHp(2, lvl, rnd);
-    if (type === 'big') return chickenHp(5, lvl, rnd);
+    if (type === CHICKEN.ARMORED) return chickenHp(4, lvl, rnd);
+    if (type === CHICKEN.FAST) return chickenHp(1, lvl, rnd);
+    if (type === CHICKEN.KAMIKAZE) return chickenHp(2, lvl, rnd);
+    if (type === CHICKEN.BIG) return chickenHp(5, lvl, rnd);
     return chickenHp(1, lvl, rnd);
   }
 
@@ -241,7 +257,7 @@
   function addBigChickens(n, lvl, rnd) {
     const spacingX = 90;
     for (let i = 0; i < n; i++) {
-      const ch = new Chicken(0, 0, hpForType('big', lvl, rnd), 'big');
+      const ch = new Chicken(0, 0, hpForType(CHICKEN.BIG, lvl, rnd), CHICKEN.BIG);
       ch.fx = (i - (n - 1) / 2) * spacingX;
       ch.fy = -30;
       state.chickens.push(ch);
@@ -250,7 +266,7 @@
 
   function addKamikazes(n, lvl) {
     for (let i = 0; i < n; i++) {
-      const ch = new Chicken(0, 0, chickenHp(2, lvl, 1), 'kamikaze');
+      const ch = new Chicken(0, 0, chickenHp(2, lvl, 1), CHICKEN.KAMIKAZE);
       ch.fx = Utils.rand(-180, 180);
       ch.fy = -50 + Utils.rand(-20, 20);
       state.chickens.push(ch);
@@ -261,7 +277,7 @@
     const wlvl = state.player.weaponLevel;
     // Boss HP scales hard with level + weapon level so a maxed laser still has work to do.
     const bossHp = 60 + lvl * 30 + Math.max(0, wlvl - 2) * 25;
-    const boss = new Chicken(0, 0, bossHp, 'boss');
+    const boss = new Chicken(0, 0, bossHp, CHICKEN.BOSS);
     boss.fx = 0;
     boss.fy = 30;
     state.chickens.push(boss);
@@ -270,7 +286,7 @@
     const minionCols = 4 + Math.floor(lvl / 2);
     const spacingX = 60;
     for (let c = 0; c < minionCols; c++) {
-      const minionType = lvl >= 4 && c % 3 === 1 ? 'armored' : lvl >= 2 && c % 2 === 0 ? 'fast' : 'normal';
+      const minionType = lvl >= 4 && c % 3 === 1 ? CHICKEN.ARMORED : lvl >= 2 && c % 2 === 0 ? CHICKEN.FAST : CHICKEN.NORMAL;
       const m = new Chicken(0, 0, hpForType(minionType, lvl, 1), minionType);
       m.fx = (c - (minionCols - 1) / 2) * spacingX;
       m.fy = 130;
@@ -286,9 +302,9 @@
       state.powerupTimer = Utils.rand(7, 14);
       const x = Utils.rand(60, W - 60);
       const types = [];
-      if (state.player.weaponLevel < state.player.maxWeaponLevel) types.push('laser', 'laser');
-      types.push('leg', 'leg');
-      if (state.lives < 5) types.push('heart');
+      if (state.player.weaponLevel < state.player.maxWeaponLevel) types.push(POWERUP.LASER, POWERUP.LASER);
+      types.push(POWERUP.LEG, POWERUP.LEG);
+      if (state.lives < GAME.MAX_LIVES) types.push(POWERUP.HEART);
       if (Math.random() < 0.85) {
         state.powerups.push(new PowerUp(x, -20, Utils.pick(types)));
       }
@@ -304,9 +320,9 @@
       state.msgTimer -= dt;
       if (state.msgTimer <= 0) {
         hideMessage();
-        if (state.phase === 'levelIntro') {
+        if (state.phase === PHASE.LEVEL_INTRO) {
           startRound();
-        } else if (state.phase === 'roundClear') {
+        } else if (state.phase === PHASE.ROUND_CLEAR) {
           state.round += 1;
           if (state.round > state.rounds) {
             state.round = 1;
@@ -319,15 +335,15 @@
           } else {
             startRound();
           }
-        } else if (state.phase === 'gameOver') {
+        } else if (state.phase === PHASE.GAME_OVER) {
           showMenu();
-        } else if (state.phase === 'victory') {
+        } else if (state.phase === PHASE.VICTORY) {
           showMenu();
         }
       }
     }
 
-    if (state.paused || state.phase !== 'play') {
+    if (state.paused || state.phase !== PHASE.PLAY) {
       // still update particles for nice background
       for (const p of state.particles) p.update(dt);
       state.particles = state.particles.filter((p) => !p.dead);
@@ -336,7 +352,7 @@
 
     const p = state.player;
     p.update(dt, input, bounds);
-    if (input.fire) p.shoot(state.lasers);
+    if (input.fire) p.shoot(state.projectiles);
     if (input.missile) p.launchMissile(state.missiles);
 
     // formation movement
@@ -356,12 +372,12 @@
     for (const ch of state.chickens) ch.update(dt, f, state.eggs, state.eggRate, playerPos);
     for (const e of state.eggs) e.update(dt, bounds);
     for (const pu of state.powerups) pu.update(dt, bounds);
-    for (const l of state.lasers) l.update(dt, bounds);
+    for (const l of state.projectiles) l.update(dt, bounds);
     for (const m of state.missiles) m.update(dt, bounds, state.particles);
     for (const pa of state.particles) pa.update(dt);
 
     // collisions: projectiles vs chickens (with piercing support)
-    for (const l of state.lasers) {
+    for (const l of state.projectiles) {
       if (l.dead) continue;
       for (const ch of state.chickens) {
         if (ch.dead) continue;
@@ -382,35 +398,18 @@
       }
     }
 
-    // missiles vs chickens (AOE)
+    // missiles vs chickens (AOE on impact)
     for (const m of state.missiles) {
       if (m.dead) continue;
       for (const ch of state.chickens) {
         if (ch.dead) continue;
-        if (Utils.rectsOverlap(m.rect, ch.rect)) {
-          // AOE explosion
-          const ex = m.x;
-          const ey = m.y;
-          spawnExplosion(state.particles, ex, ey, '#ff8800', 30, 320);
-          spawnExplosion(state.particles, ex, ey, '#ffd34d', 18, 220);
-          for (const t of state.chickens) {
-            if (t.dead) continue;
-            const dx = t.x - ex;
-            const dy = t.y - ey;
-            if (dx * dx + dy * dy < 80 * 80) {
-              t.hit(m.dmg);
-              if (t.dead) onChickenKilled(t);
-            }
-          }
-          // also destroy nearby eggs
-          for (const eg of state.eggs) {
-            const dx = eg.x - ex;
-            const dy = eg.y - ey;
-            if (dx * dx + dy * dy < 80 * 80) eg.dead = true;
-          }
-          m.dead = true;
-          break;
-        }
+        if (!Utils.rectsOverlap(m.rect, ch.rect)) continue;
+
+        spawnExplosion(state.particles, m.x, m.y, '#ff8800', 30, 320);
+        spawnExplosion(state.particles, m.x, m.y, '#ffd34d', 18, 220);
+        applyAOE(m.x, m.y, GAME.MISSILE_AOE_RADIUS, m.dmg);
+        m.dead = true;
+        break;
       }
     }
 
@@ -441,32 +440,26 @@
       if (Utils.rectsOverlap(pu.rect, p.rect)) {
         pu.dead = true;
         applyPowerup(pu.type);
-        spawnExplosion(state.particles, pu.x, pu.y, pickPuColor(pu.type), 16, 180);
+        spawnExplosion(state.particles, pu.x, pu.y, PowerUp.GLOW_COLOR[pu.type], 16, 180);
       }
     }
 
-    // cleanup
-    state.lasers = state.lasers.filter((x) => !x.dead);
-    state.missiles = state.missiles.filter((x) => !x.dead);
-    state.chickens = state.chickens.filter((x) => !x.dead);
-    state.eggs = state.eggs.filter((x) => !x.dead);
-    state.powerups = state.powerups.filter((x) => !x.dead);
-    state.particles = state.particles.filter((x) => !x.dead);
+    cleanupDead();
 
     maybeSpawnPowerup(dt);
 
     // round complete?
-    if (state.chickens.length === 0 && state.phase === 'play') {
-      const bonus = 100 * state.level;
+    if (state.chickens.length === 0 && state.phase === PHASE.PLAY) {
+      const bonus = GAME.ROUND_BONUS_PER_LEVEL * state.level;
       state.score += bonus;
       if (state.round >= state.rounds) {
         // level cleared
-        const levelBonus = 500 * state.level;
+        const levelBonus = GAME.LEVEL_CLEAR_BONUS_PER_LEVEL * state.level;
         state.score += levelBonus;
-        state.phase = 'roundClear';
+        state.phase = PHASE.ROUND_CLEAR;
         showMessage(`LEVEL ${state.level} CLEAR!`, `Bonus +${bonus + levelBonus}`, 2.4);
       } else {
-        state.phase = 'roundClear';
+        state.phase = PHASE.ROUND_CLEAR;
         showMessage(`ROUND ${state.round} CLEAR`, `Bonus +${bonus}`, 1.6);
       }
     }
@@ -474,52 +467,41 @@
     updateHUD();
   }
 
-  function pickPuColor(t) {
-    if (t === 'leg') return '#ffaa66';
-    if (t === 'laser') return '#88ffaa';
-    return '#ff6688';
-  }
-
   function applyPowerup(type) {
     const p = state.player;
-    if (type === 'leg') {
-      p.missiles = Math.min(p.missiles + 2, 99);
-      state.score += 50;
-    } else if (type === 'laser') {
+    if (type === POWERUP.LEG) {
+      p.missiles = Math.min(p.missiles + 2, GAME.MAX_MISSILES);
+      state.score += GAME.POWERUP_SCORE.leg;
+    } else if (type === POWERUP.LASER) {
       if (p.weaponLevel < p.maxWeaponLevel) {
         p.weaponLevel += 1;
-        state.score += 100;
+        state.score += GAME.POWERUP_SCORE.laser;
       } else {
-        state.score += 250;
+        state.score += GAME.POWERUP_SCORE.laser_max;
       }
-    } else if (type === 'heart') {
-      state.lives = Math.min(state.lives + 1, 5);
-      state.score += 75;
+    } else if (type === POWERUP.HEART) {
+      state.lives = Math.min(state.lives + 1, GAME.MAX_LIVES);
+      state.score += GAME.POWERUP_SCORE.heart;
     }
   }
+
+  const POWERUP_DROP_CHANCE = { [CHICKEN.BOSS]: 1.0, [CHICKEN.BIG]: 0.5 };
+  const POWERUP_DROP_WEIGHTS = {
+    boss: { items: [POWERUP.LEG, POWERUP.LASER, POWERUP.HEART], weights: [3, 3, 2] },
+    other: { items: [POWERUP.LEG, POWERUP.LASER, POWERUP.HEART], weights: [4, 3, 1] },
+  };
 
   function onChickenKilled(ch) {
     state.score += ch.points;
     spawnFeathers(state.particles, ch.x, ch.y);
     spawnExplosion(state.particles, ch.x, ch.y, '#ffd34d', 8, 160);
 
-    // chance to drop a powerup
-    const dropChance = ch.type === 'boss' ? 1 : ch.type === 'big' ? 0.5 : 0.06;
-    if (Math.random() < dropChance) {
-      const types = ['leg', 'laser', 'heart'];
-      const weights = ch.type === 'boss' ? [3, 3, 2] : [4, 3, 1];
-      const total = weights.reduce((a, b) => a + b, 0);
-      let r = Math.random() * total;
-      let pick = 'leg';
-      for (let i = 0; i < types.length; i++) {
-        r -= weights[i];
-        if (r <= 0) {
-          pick = types[i];
-          break;
-        }
-      }
-      state.powerups.push(new PowerUp(ch.x, ch.y, pick));
-    }
+    const dropChance = POWERUP_DROP_CHANCE[ch.type] ?? 0.06;
+    if (Math.random() >= dropChance) return;
+
+    const table = ch.type === CHICKEN.BOSS ? POWERUP_DROP_WEIGHTS.boss : POWERUP_DROP_WEIGHTS.other;
+    const pick = Utils.weightedPick(table.items, table.weights);
+    state.powerups.push(new PowerUp(ch.x, ch.y, pick));
   }
 
   function loseLife() {
@@ -529,27 +511,21 @@
       gameOver();
       return;
     }
-    // ship survives — punishment: weapon level drops by one
-    const keptMissiles = state.player.missiles;
-    const keptLevel = Math.max(1, state.player.weaponLevel - 1);
-    state.player = new Player(W / 2, H - 70);
-    state.player.weaponLevel = keptLevel;
-    state.player.missiles = keptMissiles;
-    state.player.invuln = 2.0;
+    state.player.respawn(W / 2, H - 70);
   }
 
   function gameOver() {
-    state.phase = 'gameOver';
+    state.phase = PHASE.GAME_OVER;
     showMessage(`GAME OVER`, `Score: ${state.score} — press to continue`, 3.0);
   }
 
   function enterVictory() {
-    state.phase = 'victory';
+    state.phase = PHASE.VICTORY;
     showMessage(`VICTORY!`, `You saved the galaxy! Score: ${state.score}`, 4.0);
   }
 
   function showMenu() {
-    state.phase = 'menu';
+    state.phase = PHASE.MENU;
     overlay.classList.remove('hidden');
     overlayPanel.querySelector('h1').textContent = state.score > 0 ? 'GAME COMPLETE' : 'SPACE CHICKEN INVADERS';
     startBtn.textContent = state.score > 0 ? 'PLAY AGAIN' : 'START GAME';
@@ -573,51 +549,51 @@
     for (const pu of state.powerups) pu.draw(ctx);
     for (const ch of state.chickens) ch.draw(ctx);
     for (const e of state.eggs) e.draw(ctx);
-    for (const l of state.lasers) l.draw(ctx);
+    for (const l of state.projectiles) l.draw(ctx);
     for (const m of state.missiles) m.draw(ctx);
 
-    if (state.player && state.phase !== 'menu') state.player.draw(ctx);
+    if (state.player && state.phase !== PHASE.MENU) state.player.draw(ctx);
 
     for (const p of state.particles) p.draw(ctx);
 
-    // Boss HP bar — only while a boss is alive on screen
-    if (state.phase === 'play') {
-      const boss = state.chickens.find((c) => c.type === 'boss' && !c.dead);
-      if (boss) {
-        const bw = 540;
-        const bh = 14;
-        const bx = (W - bw) / 2;
-        const by = 70;
-        ctx.fillStyle = 'rgba(0,0,0,0.7)';
-        ctx.fillRect(bx - 4, by - 18, bw + 8, bh + 24);
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-          boss.phase === 2 ? 'CHICKEN OVERLORD — ENRAGED' : 'CHICKEN OVERLORD',
-          W / 2,
-          by - 4,
-        );
-        ctx.fillStyle = '#400';
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = boss.phase === 2 ? '#ff4444' : '#ff8844';
-        ctx.fillRect(bx, by, bw * Utils.clamp(boss.hp / boss.maxHp, 0, 1), bh);
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(bx, by, bw, bh);
-      }
-    }
+    if (state.phase === PHASE.PLAY) renderBossHpBar();
+    if (state.paused && state.phase === PHASE.PLAY) renderPauseOverlay();
+  }
 
-    if (state.paused && state.phase === 'play') {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = '#fff';
-      ctx.font = 'bold 32px monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('PAUSED', W / 2, H / 2);
-      ctx.font = '14px monospace';
-      ctx.fillText('Press P to resume', W / 2, H / 2 + 30);
-    }
+  function renderBossHpBar() {
+    const boss = state.chickens.find((c) => c.type === CHICKEN.BOSS && !c.dead);
+    if (!boss) return;
+
+    const bw = 540;
+    const bh = 14;
+    const bx = (W - bw) / 2;
+    const by = 70;
+    const enraged = boss.phase === 2;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(bx - 4, by - 18, bw + 8, bh + 24);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(enraged ? 'CHICKEN OVERLORD — ENRAGED' : 'CHICKEN OVERLORD', W / 2, by - 4);
+    ctx.fillStyle = '#400';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.fillStyle = enraged ? '#ff4444' : '#ff8844';
+    ctx.fillRect(bx, by, bw * Utils.clamp(boss.hp / boss.maxHp, 0, 1), bh);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, bw, bh);
+  }
+
+  function renderPauseOverlay() {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 32px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED', W / 2, H / 2);
+    ctx.font = '14px monospace';
+    ctx.fillText('Press P to resume', W / 2, H / 2 + 30);
   }
 
   // ---------- Loop ----------

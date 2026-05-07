@@ -8,7 +8,7 @@ class Player {
     this.h = 40;
     this.speed = 360;
     this.weaponLevel = 1;
-    this.maxWeaponLevel = 5;
+    this.maxWeaponLevel = GAME.MAX_WEAPON_LEVEL;
     this.missiles = 0;
     this.fireCd = 0;
     this.missileCd = 0;
@@ -87,9 +87,22 @@ class Player {
 
   hit() {
     if (this.invuln > 0) return false;
-    this.invuln = 1.6;
+    this.invuln = GAME.PLAYER_INVULN_AFTER_HIT;
     this.flash = 0.6;
     return true;
+  }
+
+  // Bring the ship back from the dead — keeps missiles, drops one weapon tier
+  // as a soft penalty, and grants a longer invuln window than a normal hit.
+  respawn(x, y) {
+    this.x = x;
+    this.y = y;
+    this.weaponLevel = Math.max(1, this.weaponLevel - 1);
+    this.fireCd = 0;
+    this.missileCd = 0;
+    this.invuln = GAME.PLAYER_INVULN_AFTER_RESPAWN;
+    this.flash = 0;
+    this.dead = false;
   }
 
   draw(ctx) {
@@ -393,7 +406,7 @@ class Missile {
 }
 
 class Chicken {
-  constructor(x, y, hp, type = 'normal') {
+  constructor(x, y, hp, type = CHICKEN.NORMAL) {
     this.x = x;
     this.y = y;
     this.hx = x;
@@ -410,20 +423,20 @@ class Chicken {
     this.swaySpd = Utils.rand(0.6, 1.2);
 
     // Type-specific stats / sizing
-    if (type === 'fast') {
+    if (type === CHICKEN.FAST) {
       this.w = 30;
       this.h = 28;
       this.swayAmp *= 1.6;
       this.swaySpd *= 1.5;
       this.bobSpd *= 1.4;
       this.points = 40;
-    } else if (type === 'armored') {
+    } else if (type === CHICKEN.ARMORED) {
       this.w = 42;
       this.h = 38;
       this.swaySpd *= 0.6;
       this.swayAmp *= 0.6;
       this.points = 120;
-    } else if (type === 'kamikaze') {
+    } else if (type === CHICKEN.KAMIKAZE) {
       this.w = 36;
       this.h = 34;
       this.points = 90;
@@ -431,11 +444,11 @@ class Chicken {
       this.diving = false;
       this.diveVx = 0;
       this.diveVy = 0;
-    } else if (type === 'big') {
+    } else if (type === CHICKEN.BIG) {
       this.w = 50;
       this.h = 46;
       this.points = 80;
-    } else if (type === 'boss') {
+    } else if (type === CHICKEN.BOSS) {
       this.w = 110;
       this.h = 100;
       this.points = 1500;
@@ -459,7 +472,7 @@ class Chicken {
   update(dt, formation, eggs, eggRate, playerPos) {
     this.t += dt;
 
-    if (this.type === 'kamikaze' && this.diving) {
+    if (this.type === CHICKEN.KAMIKAZE && this.diving) {
       // dive bomber: free fall + slight homing on the player x
       this.x += this.diveVx * dt;
       this.y += this.diveVy * dt;
@@ -482,7 +495,7 @@ class Chicken {
     this.x = this.hx + Math.sin(this.t * this.swaySpd) * this.swayAmp * 0.3;
     this.y = this.hy + Math.sin(this.t * this.bobSpd) * this.bobAmp * 0.4;
 
-    if (this.type === 'boss') {
+    if (this.type === CHICKEN.BOSS) {
       // boss has its own attack patterns instead of plain egg laying
       const phase2 = this.hp < this.maxHp * 0.5;
       this.phase = phase2 ? 2 : 1;
@@ -494,7 +507,7 @@ class Chicken {
       return;
     }
 
-    if (this.type === 'kamikaze') {
+    if (this.type === CHICKEN.KAMIKAZE) {
       this.diveCd -= dt * eggRate;
       if (this.diveCd <= 0) {
         this.diving = true;
@@ -505,7 +518,7 @@ class Chicken {
     }
 
     // Egg laying — frequency depends on type
-    const eggMult = this.type === 'fast' ? 1.4 : this.type === 'armored' ? 0.4 : this.type === 'big' ? 1.6 : 1.0;
+    const eggMult = this.type === CHICKEN.FAST ? 1.4 : this.type === CHICKEN.ARMORED ? 0.4 : this.type === CHICKEN.BIG ? 1.6 : 1.0;
     this.eggCd -= dt * eggRate * eggMult;
     if (this.eggCd <= 0) {
       this.eggCd = Utils.rand(3, 7);
@@ -559,7 +572,7 @@ class Chicken {
   }
 
   draw(ctx) {
-    if (this.type === 'boss') {
+    if (this.type === CHICKEN.BOSS) {
       this.drawBoss(ctx);
       return;
     }
@@ -568,22 +581,22 @@ class Chicken {
     const wing = Math.sin(this.t * 6) * 3;
 
     let bodyColor, accent, combColor, beakColor;
-    if (this.type === 'big') {
+    if (this.type === CHICKEN.BIG) {
       bodyColor = '#ffeecc';
       accent = '#e0c8a0';
       combColor = '#cc2244';
       beakColor = '#ffaa00';
-    } else if (this.type === 'fast') {
+    } else if (this.type === CHICKEN.FAST) {
       bodyColor = '#bce6ff';
       accent = '#88c8ee';
       combColor = '#33aaff';
       beakColor = '#ff7733';
-    } else if (this.type === 'armored') {
+    } else if (this.type === CHICKEN.ARMORED) {
       bodyColor = '#9aa0aa';
       accent = '#5e6470';
       combColor = '#ffaa33';
       beakColor = '#cc7700';
-    } else if (this.type === 'kamikaze') {
+    } else if (this.type === CHICKEN.KAMIKAZE) {
       bodyColor = '#ffaa99';
       accent = '#cc4422';
       combColor = '#ff2200';
@@ -615,7 +628,7 @@ class Chicken {
     ctx.fill();
 
     // armor plating
-    if (this.type === 'armored') {
+    if (this.type === CHICKEN.ARMORED) {
       ctx.strokeStyle = '#3a4050';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -640,7 +653,7 @@ class Chicken {
     ctx.fill();
 
     // armored helmet
-    if (this.type === 'armored') {
+    if (this.type === CHICKEN.ARMORED) {
       ctx.fillStyle = '#5e6470';
       ctx.beginPath();
       ctx.arc(x, y - 10, this.w * 0.26, Math.PI, 0);
@@ -650,7 +663,7 @@ class Chicken {
     }
 
     // comb
-    if (this.type !== 'armored') {
+    if (this.type !== CHICKEN.ARMORED) {
       ctx.fillStyle = combColor;
       ctx.beginPath();
       ctx.arc(x - 3, y - 14, 2.5, 0, Math.PI * 2);
@@ -660,7 +673,7 @@ class Chicken {
     }
 
     // angry eyes for kamikaze
-    if (this.type === 'kamikaze') {
+    if (this.type === CHICKEN.KAMIKAZE) {
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -681,7 +694,7 @@ class Chicken {
     ctx.fill();
 
     // eyes
-    ctx.fillStyle = this.type === 'kamikaze' ? '#ff2200' : '#000';
+    ctx.fillStyle = this.type === CHICKEN.KAMIKAZE ? '#ff2200' : '#000';
     ctx.beginPath();
     ctx.arc(x - 3, y - 9, 1.4, 0, Math.PI * 2);
     ctx.arc(x + 3, y - 9, 1.4, 0, Math.PI * 2);
@@ -693,7 +706,7 @@ class Chicken {
     ctx.fillRect(x + 4, y + bh + 2, 2, 4);
 
     // hp bar for tougher chickens
-    const showBar = (this.type === 'big' || this.type === 'armored') && this.hp < this.maxHp;
+    const showBar = (this.type === CHICKEN.BIG || this.type === CHICKEN.ARMORED) && this.hp < this.maxHp;
     if (showBar) {
       const w = 30;
       ctx.fillStyle = '#400';
@@ -856,6 +869,13 @@ class Egg {
 }
 
 class PowerUp {
+  // Glow color used for the pickup explosion FX. Keyed by POWERUP type.
+  static GLOW_COLOR = {
+    [POWERUP.LEG]: '#ffaa66',
+    [POWERUP.LASER]: '#88ffaa',
+    [POWERUP.HEART]: '#ff6688',
+  };
+
   constructor(x, y, type) {
     this.x = x;
     this.y = y;
@@ -885,7 +905,7 @@ class PowerUp {
     const y = this.y + Math.sin(this.t * 4) * 2;
     const pulse = 1 + Math.sin(this.t * 6) * 0.1;
 
-    if (this.type === 'leg') {
+    if (this.type === POWERUP.LEG) {
       // chicken leg / drumstick
       ctx.save();
       ctx.translate(x, y);
@@ -900,7 +920,7 @@ class PowerUp {
       ctx.arc(0, -8, 3, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-    } else if (this.type === 'laser') {
+    } else if (this.type === POWERUP.LASER) {
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(pulse, pulse);
@@ -917,7 +937,7 @@ class PowerUp {
       ctx.fillStyle = '#fff';
       ctx.fillRect(-2, -4, 4, 8);
       ctx.restore();
-    } else if (this.type === 'heart') {
+    } else if (this.type === POWERUP.HEART) {
       ctx.save();
       ctx.translate(x, y);
       ctx.scale(pulse, pulse);
