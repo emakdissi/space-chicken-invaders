@@ -4,15 +4,23 @@ A browser-based 2D space shooter inspired by the classic *Chicken Invaders* seri
 
 The entire game runs in vanilla HTML5 + Canvas + JavaScript — no build step, no dependencies, no installation.
 
+## ▶ Play it now
+
+**Live demo: https://emakdissi.github.io/space-chicken-invaders/**
+
+Hosted free on GitHub Pages — open the link in any modern browser and click **START GAME**. No install, no account, nothing to download.
+
+> The live site is served from a deployment mirror at [`emakdissi/space-chicken-invaders`](https://github.com/emakdissi/space-chicken-invaders). Active development happens here on the `EM1-dev` branch of `amenai-interns-playground`.
+
 ---
 
 ## How to Play
 
-1. Open `index.html` in any modern browser (Chrome, Firefox, Edge, Safari).
+1. Open the [live demo](https://emakdissi.github.io/space-chicken-invaders/), **or** clone this repo and open `index.html` locally.
 2. Click **START GAME**.
 3. Survive each round, clear each level, defeat the boss chickens.
 
-> Tip: most browsers will run this directly from the file system, but if you see CORS or loading issues, serve the folder over HTTP:
+> Running locally: opening `index.html` directly via `file://` works in most browsers, but if you hit any loading issues, serve the folder over HTTP:
 >
 > ```bash
 > python3 -m http.server 8000
