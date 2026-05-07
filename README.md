@@ -10,7 +10,7 @@ The entire game runs in vanilla HTML5 + Canvas + JavaScript — no build step, n
 
 Hosted free on GitHub Pages — open the link in any modern browser and click **START GAME**. No install, no account, nothing to download.
 
-> The live site is served from a deployment mirror at [`emakdissi/space-chicken-invaders`](https://github.com/emakdissi/space-chicken-invaders). Active development happens here on the `EM1-dev` branch of `amenai-interns-playground`.
+> The live site is served from a deployment mirror at [`emakdissi/space-chicken-invaders`](https://github.com/emakdissi/space-chicken-invaders). Active development happens here on the `ELI-1-dev` branch of `amenai-interns-playground`.
 
 ---
 
